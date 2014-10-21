@@ -42,6 +42,7 @@ class Scope implements IScope {
         }
     }
 
+
     $apply(expr) {
         try {
             return this.$eval(expr);
