@@ -1,4 +1,4 @@
-﻿/// <reference path="../scripts/typings/jasmine/jasmine.d.ts" />
+/// <reference path="../scripts/typings/jasmine/jasmine.d.ts" />
 
 /* jshint globalstrict: true */
 /* global Scope: false */
@@ -243,6 +243,72 @@ describe("Scope", () => {
                 scope.aValue = 'someOtherValue';
             });
             expect(scope.counter).toBe(2);
+        });
+
+        it("executes $evalAsynced function later in the same cycle", () => {
+            scope.aValue = [1, 2, 3];
+            scope.asyncEvaluated = false;
+            scope.asyncEvaluatedImmediately = false;
+            scope.$watch(
+                scope => scope.aValue,
+                (newValue, oldValue, scope) => {
+                    scope.$evalAsync(scope => {
+                        scope.asyncEvaluated = true;
+                    });
+                    scope.asyncEvaluatedImmediately = scope.asyncEvaluated;
+                }
+                );
+            scope.$digest();
+            expect(scope.asyncEvaluated).toBe(true);
+            expect(scope.asyncEvaluatedImmediately).toBe(false);
+        });
+
+        it("executes $evalAsynced functions added by watch functions", () => {
+            scope.aValue = [1, 2, 3];
+            scope.asyncEvaluated = false;
+            scope.$watch(
+                scope => {
+                    if (!scope.asyncEvaluated) {
+                        scope.$evalAsync(scope => {
+                            scope.asyncEvaluated = true;
+                        });
+                    }
+                    return scope.aValue;
+                },
+                (newValue, oldValue, scope) => { }
+                );
+            scope.$digest();
+            expect(scope.asyncEvaluated).toBe(true);
+        });
+
+        it("executes $evalAsynced functions even when not dirty", () => {
+            scope.aValue = [1, 2, 3];
+            scope.asyncEvaluatedTimes = 0;
+            scope.$watch(
+                scope => {
+                    if (scope.asyncEvaluatedTimes < 2) {
+                        scope.$evalAsync(scope => {
+                            scope.asyncEvaluatedTimes++;
+                        });
+                    }
+                    return scope.aValue;
+                },
+                (newValue, oldValue, scope) => { }
+            );
+            scope.$digest();
+            expect(scope.asyncEvaluatedTimes).toBe(2);
+        });
+
+        it("eventually halts $evalAsyncs added by watches", () => {
+            scope.aValue = [1, 2, 3];
+            scope.$watch(
+                scope => {
+                    scope.$evalAsync(scope => { });
+                    return scope.aValue;
+                },
+                (newValue, oldValue, scope) => { }
+            );
+            expect(() => { scope.$digest(); }).toThrow();
         });
 
     });
