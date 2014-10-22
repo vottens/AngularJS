@@ -1,4 +1,4 @@
-﻿/* jshint globalstrict: true */
+/* jshint globalstrict: true */
 'use strict';
 
 interface IWatch {
@@ -11,6 +11,7 @@ interface IWatch {
 interface IScope {
     $apply: Function;
     $eval: Function;
+    $evalAsync:Function;
     $watch: Function;
     $digest: Function;
     $$digestOnce: Function;
@@ -21,6 +22,7 @@ class Scope implements IScope {
 
     private $$watchers: IWatch[];
     private $$lastDirtyWatch = null;
+    private $$asyncQueue = [];
 
     constructor() {
         this.$$watchers = [];
@@ -42,7 +44,6 @@ class Scope implements IScope {
         }
     }
 
-
     $apply(expr) {
         try {
             return this.$eval(expr);
@@ -51,7 +52,11 @@ class Scope implements IScope {
         }
     }
 
-    $eval(expr, locals) {
+    $evalAsync(expr: any) {
+        this.$$asyncQueue.push({ scope: this, expression: expr });
+    }
+
+    $eval(expr:any, locals?:any) {
         return expr(this, locals);
     }
 
@@ -71,11 +76,15 @@ class Scope implements IScope {
         var dirty;
         this.$$lastDirtyWatch = null;
         do {
+            while (this.$$asyncQueue.length) {
+                var asyncTask = this.$$asyncQueue.shift();
+                asyncTask.scope.$eval(asyncTask.expression);
+            }
             dirty = this.$$digestOnce();
             if (dirty && !(ttl--)) {
                 throw "10 digest iterations reached";
             }
-        } while (dirty);
+        } while (dirty || this.$$asyncQueue.length);
     }
 
     $$digestOnce() {
@@ -96,4 +105,3 @@ class Scope implements IScope {
         return dirty;
     }
 }
-
