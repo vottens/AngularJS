@@ -1,4 +1,4 @@
-/* jshint globalstrict: true */
+﻿/* jshint globalstrict: true */
 'use strict';
 
 interface IWatch {
@@ -11,25 +11,38 @@ interface IWatch {
 interface IScope {
     $apply: Function;
     $eval: Function;
-    $evalAsync:Function;
+    $evalAsync: Function;
     $watch: Function;
     $digest: Function;
     $$digestOnce: Function;
+    $$beginPhase: Function;
+    $$clearPhase: Function;
 }
 
 
 class Scope implements IScope {
 
-    private $$watchers: IWatch[];
+    private $$watchers: IWatch[] = [];
     private $$lastDirtyWatch = null;
     private $$asyncQueue = [];
+    private $$phase: string = null;
 
     constructor() {
-        this.$$watchers = [];
     }
 
     initWatchVal() {
 
+    }
+
+    $$beginPhase(phase) {
+        if (this.$$phase) {
+            throw this.$$phase + ' already in progress.';
+        }
+        this.$$phase = phase;
+    }
+
+    $$clearPhase() {
+        this.$$phase = null;
     }
 
     private $$areEqual(newValue, oldValue, valueEq) {
@@ -46,17 +59,27 @@ class Scope implements IScope {
 
     $apply(expr) {
         try {
+            this.$$beginPhase("$apply");
             return this.$eval(expr);
         } finally {
+            this.$$clearPhase();
             this.$digest();
         }
     }
 
     $evalAsync(expr: any) {
+        var self = this;
+        if (!self.$$phase && !self.$$asyncQueue.length) {
+            setTimeout(() => {
+                if (self.$$asyncQueue.length) {
+                    self.$digest();
+                }
+            }, 0);
+        }
         this.$$asyncQueue.push({ scope: this, expression: expr });
     }
 
-    $eval(expr:any, locals?:any) {
+    $eval(expr: any, locals?: any) {
         return expr(this, locals);
     }
 
@@ -75,16 +98,19 @@ class Scope implements IScope {
         var ttl = 10;
         var dirty;
         this.$$lastDirtyWatch = null;
+        this.$$beginPhase("$digest");
         do {
             while (this.$$asyncQueue.length) {
                 var asyncTask = this.$$asyncQueue.shift();
                 asyncTask.scope.$eval(asyncTask.expression);
             }
             dirty = this.$$digestOnce();
-            if (dirty && !(ttl--)) {
+            if ((dirty || this.$$asyncQueue.length) && !(ttl--)) {
+                this.$$clearPhase();
                 throw "10 digest iterations reached";
             }
         } while (dirty || this.$$asyncQueue.length);
+        this.$$clearPhase();
     }
 
     $$digestOnce() {
